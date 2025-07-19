@@ -1,0 +1,382 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <SoftwareSerial.h>
+#include <TinyGPS++.h>
+
+// WiFi credentials (for testing - in production use GSM)
+const char* ssid = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+// Server endpoint (replace with your server URL)
+const char* serverURL = "http://yourserver.com/api/location";
+
+// Bus identification
+const String busId = "BUS_001"; // Unique identifier for each bus
+
+// GPS Module pins
+#define GPS_RX_PIN 16
+#define GPS_TX_PIN 17
+
+// GSM Module pins (SIM800L)
+#define GSM_RX_PIN 4
+#define GSM_TX_PIN 2
+
+// LED indicator pin
+#define LED_PIN 2
+
+// GPS and GSM serial communication
+SoftwareSerial gpsSerial(GPS_RX_PIN, GPS_TX_PIN);
+SoftwareSerial gsmSerial(GSM_RX_PIN, GSM_TX_PIN);
+TinyGPSPlus gps;
+
+// Configuration
+const unsigned long GPS_UPDATE_INTERVAL = 30000; // 30 seconds
+const unsigned long HEARTBEAT_INTERVAL = 300000; // 5 minutes
+unsigned long lastGPSUpdate = 0;
+unsigned long lastHeartbeat = 0;
+
+// GPS data structure
+struct GPSData {
+  double latitude;
+  double longitude;
+  double altitude;
+  double speed;
+  int satellites;
+  bool isValid;
+  String timestamp;
+};
+
+void setup() {
+  Serial.begin(115200);
+  gpsSerial.begin(9600);
+  gsmSerial.begin(9600);
+  
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+  
+  Serial.println("Bus GPS Tracker Starting...");
+  
+  // Initialize GPS
+  initializeGPS();
+  
+  // Initialize GSM
+  if (initializeGSM()) {
+    Serial.println("GSM initialized successfully");
+    digitalWrite(LED_PIN, HIGH);
+  } else {
+    Serial.println("GSM initialization failed - using WiFi fallback");
+    initializeWiFi();
+  }
+  
+  Serial.println("System ready for tracking");
+}
+
+void loop() {
+  unsigned long currentTime = millis();
+  
+  // Read GPS data continuously
+  while (gpsSerial.available() > 0) {
+    if (gps.encode(gpsSerial.read())) {
+      // GPS data updated
+    }
+  }
+  
+  // Send location update at specified intervals
+  if (currentTime - lastGPSUpdate >= GPS_UPDATE_INTERVAL) {
+    GPSData locationData = getGPSData();
+    
+    if (locationData.isValid) {
+      if (sendLocationData(locationData)) {
+        Serial.println("Location sent successfully");
+        blinkLED(2, 200); // Success indicator
+      } else {
+        Serial.println("Failed to send location");
+        blinkLED(5, 100); // Error indicator
+      }
+    } else {
+      Serial.println("Waiting for GPS fix...");
+      blinkLED(1, 1000); // Searching indicator
+    }
+    
+    lastGPSUpdate = currentTime;
+  }
+  
+  // Send heartbeat
+  if (currentTime - lastHeartbeat >= HEARTBEAT_INTERVAL) {
+    sendHeartbeat();
+    lastHeartbeat = currentTime;
+  }
+  
+  delay(1000);
+}
+
+void initializeGPS() {
+  Serial.println("Initializing GPS module...");
+  
+  // Send configuration commands to GPS module
+  gpsSerial.println("$PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*28"); // Set output
+  delay(1000);
+  gpsSerial.println("$PMTK220,1000*1F"); // Set update rate to 1Hz
+  delay(1000);
+  
+  Serial.println("GPS module configured");
+}
+
+bool initializeGSM() {
+  Serial.println("Initializing GSM module...");
+  
+  // Wait for GSM module to be ready
+  delay(3000);
+  
+  // Check if GSM module is responding
+  gsmSerial.println("AT");
+  if (!waitForResponse("OK", 5000)) {
+    return false;
+  }
+  
+  // Check SIM card
+  gsmSerial.println("AT+CPIN?");
+  if (!waitForResponse("READY", 5000)) {
+    return false;
+  }
+  
+  // Check network registration
+  gsmSerial.println("AT+CREG?");
+  delay(2000);
+  
+  // Set APN (adjust for your carrier)
+  gsmSerial.println("AT+CSTT=\"airtelgprs.com\",\"\",\"\""); // Airtel APN
+  if (!waitForResponse("OK", 5000)) {
+    return false;
+  }
+  
+  // Bring up wireless connection
+  gsmSerial.println("AT+CIICR");
+  if (!waitForResponse("OK", 10000)) {
+    return false;
+  }
+  
+  // Get local IP address
+  gsmSerial.println("AT+CIFSR");
+  delay(2000);
+  
+  Serial.println("GSM module initialized successfully");
+  return true;
+}
+
+void initializeWiFi() {
+  Serial.println("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  
+  Serial.println();
+  Serial.println("WiFi connected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+GPSData getGPSData() {
+  GPSData data;
+  data.isValid = false;
+  
+  if (gps.location.isValid()) {
+    data.latitude = gps.location.lat();
+    data.longitude = gps.location.lng();
+    data.altitude = gps.altitude.meters();
+    data.speed = gps.speed.kmph();
+    data.satellites = gps.satellites.value();
+    data.isValid = true;
+    
+    // Create timestamp
+    if (gps.date.isValid() && gps.time.isValid()) {
+      char timestamp[32];
+      sprintf(timestamp, "%04d-%02d-%02d %02d:%02d:%02d",
+              gps.date.year(), gps.date.month(), gps.date.day(),
+              gps.time.hour(), gps.time.minute(), gps.time.second());
+      data.timestamp = String(timestamp);
+    } else {
+      data.timestamp = "Unknown";
+    }
+    
+    // Print GPS data to serial
+    Serial.printf("GPS: %.6f, %.6f | Speed: %.2f km/h | Sats: %d\n",
+                  data.latitude, data.longitude, data.speed, data.satellites);
+  }
+  
+  return data;
+}
+
+bool sendLocationData(GPSData data) {
+  // Create JSON payload
+  StaticJsonDocument<500> doc;
+  doc["busId"] = busId;
+  doc["latitude"] = data.latitude;
+  doc["longitude"] = data.longitude;
+  doc["altitude"] = data.altitude;
+  doc["speed"] = data.speed;
+  doc["satellites"] = data.satellites;
+  doc["timestamp"] = data.timestamp;
+  doc["type"] = "location";
+  
+  String jsonString;
+  serializeJson(doc, jsonString);
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    return sendViaWiFi(jsonString);
+  } else {
+    return sendViaGSM(jsonString);
+  }
+}
+
+bool sendViaWiFi(String jsonData) {
+  HTTPClient http;
+  http.begin(serverURL);
+  http.addHeader("Content-Type", "application/json");
+  
+  int httpResponseCode = http.POST(jsonData);
+  
+  if (httpResponseCode > 0) {
+    String response = http.getString();
+    Serial.println("HTTP Response: " + response);
+    http.end();
+    return httpResponseCode == 200;
+  } else {
+    Serial.printf("HTTP Error: %d\n", httpResponseCode);
+    http.end();
+    return false;
+  }
+}
+
+bool sendViaGSM(String jsonData) {
+  // Start TCP connection
+  gsmSerial.println("AT+CIPSTART=\"TCP\",\"yourserver.com\",80");
+  if (!waitForResponse("CONNECT", 10000)) {
+    return false;
+  }
+  
+  // Prepare HTTP request
+  String httpRequest = "POST /api/location HTTP/1.1\r\n";
+  httpRequest += "Host: yourserver.com\r\n";
+  httpRequest += "Content-Type: application/json\r\n";
+  httpRequest += "Content-Length: " + String(jsonData.length()) + "\r\n\r\n";
+  httpRequest += jsonData;
+  
+  // Send data
+  gsmSerial.print("AT+CIPSEND=");
+  gsmSerial.println(httpRequest.length());
+  
+  if (waitForResponse(">", 5000)) {
+    gsmSerial.print(httpRequest);
+    
+    if (waitForResponse("SEND OK", 10000)) {
+      // Close connection
+      gsmSerial.println("AT+CIPCLOSE");
+      return true;
+    }
+  }
+  
+  // Close connection on error
+  gsmSerial.println("AT+CIPCLOSE");
+  return false;
+}
+
+void sendHeartbeat() {
+  StaticJsonDocument<200> doc;
+  doc["busId"] = busId;
+  doc["type"] = "heartbeat";
+  doc["uptime"] = millis();
+  doc["timestamp"] = "system_time";
+  
+  String jsonString;
+  serializeJson(doc, jsonString);
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    sendViaWiFi(jsonString);
+  } else {
+    sendViaGSM(jsonString);
+  }
+  
+  Serial.println("Heartbeat sent");
+}
+
+bool waitForResponse(String expected, unsigned long timeout) {
+  String response = "";
+  unsigned long startTime = millis();
+  
+  while (millis() - startTime < timeout) {
+    while (gsmSerial.available()) {
+      char c = gsmSerial.read();
+      response += c;
+      Serial.print(c);
+    }
+    
+    if (response.indexOf(expected) != -1) {
+      return true;
+    }
+    
+    delay(100);
+  }
+  
+  return false;
+}
+
+void blinkLED(int count, int duration) {
+  for (int i = 0; i < count; i++) {
+    digitalWrite(LED_PIN, HIGH);
+    delay(duration);
+    digitalWrite(LED_PIN, LOW);
+    delay(duration);
+  }
+}
+
+// Emergency functions
+void emergencyStop() {
+  // Function to handle emergency situations
+  StaticJsonDocument<200> doc;
+  doc["busId"] = busId;
+  doc["type"] = "emergency";
+  doc["alert"] = "EMERGENCY_STOP";
+  doc["timestamp"] = "system_time";
+  
+  String jsonString;
+  serializeJson(doc, jsonString);
+  
+  // Send emergency alert
+  if (WiFi.status() == WL_CONNECTED) {
+    sendViaWiFi(jsonString);
+  } else {
+    sendViaGSM(jsonString);
+  }
+  
+  Serial.println("EMERGENCY ALERT SENT");
+  
+  // Continuous LED blinking for emergency
+  while (true) {
+    digitalWrite(LED_PIN, HIGH);
+    delay(100);
+    digitalWrite(LED_PIN, LOW);
+    delay(100);
+  }
+}
+
+void printSystemInfo() {
+  Serial.println("\n=== System Information ===");
+  Serial.printf("Bus ID: %s\n", busId.c_str());
+  Serial.printf("Uptime: %lu ms\n", millis());
+  Serial.printf("Free Heap: %u bytes\n", ESP.getFreeHeap());
+  Serial.printf("WiFi Status: %s\n", WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected");
+  
+  if (gps.location.isValid()) {
+    Serial.printf("GPS Status: Fixed (%d satellites)\n", gps.satellites.value());
+    Serial.printf("Location: %.6f, %.6f\n", gps.location.lat(), gps.location.lng());
+  } else {
+    Serial.println("GPS Status: No Fix");
+  }
+  
+  Serial.println("=========================\n");
+}
