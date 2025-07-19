@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Bus Tracker - Arrivals & Stations</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+            padding: 15px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 25px;
+            border-radius: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2.8em;
+            font-weight: 700;
+        }
+
+        .header p {
+            color: #7f8c8d;
+            font-size: 1.2em;
+        }
+
+        .current-time {
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            padding: 15px;
+            border-radius: 15px;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 1.8em;
+            font-weight: bold;
+            box-shadow: 0 5px 20px rgba(52, 152, 219, 0.3);
+        }
+
+        .search-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 25px;
+            border-radius: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .search-controls {
+            display: grid;
+            grid-template-columns: 2fr 2fr 1fr;
+            gap: 20px;
+            align-items: end;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 1.1em;
+        }
+
+        .form-group select {
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            font-size: 1.1em;
+            transition: border-color 0.3s ease;
+            background: white;
+        }
+
+        .form-group select:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+        }
+
+        .search-btn {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 1.1em;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            height: fit-content;
+        }
+
+        .search-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+        }
+
+        .bus-routes {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 25px;
+            margin-bottom: 25px;
+        }
+
+        .route-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .route-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
+        }
+
+        .route-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f1f3f4;
+        }
+
+        .route-number {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #2c3e50;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .route-direction {
+            font-size: 1.1em;
+            color: #7f8c8d;
+            font-weight: 500;
+        }
+
+        .bus-info {
+            margin-bottom: 20px;
+        }
+
+        .bus-status {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 1.1em;
+            font-weight: 600;
+        }
+
+        .status-moving {
+            background: linear-gradient(135deg, #2ecc71, #27ae60);
+            color: white;
+        }
+
+        .status-stopped {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: white;
+        }
+
+        .status-delayed {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .status-icon {
+            font-size: 1.5em;
+            margin-right: 12px;
+        }
+
+        .current-location {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-left: 4px solid #3498db;
+        }
+
+        .current-location h4 {
+            color: #2c3e50;
+            margin-bottom: 8px;
+            font-size: 1.2em;
+        }
+
+        .current-location p {
+            color: #7f8c8d;
+            font-size: 1em;
+            line-height: 1.5;
+        }
+
+        .arrival-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .arrival-time {
+            text-align: center;
+            padding: 15px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #9b59b6, #8e44ad);
+            color: white;
+        }
+
+        .arrival-time h4 {
+            font-size: 0.9em;
+            margin-bottom: 5px;
+            opacity: 0.9;
+        }
+
+        .arrival-time .time {
+            font-size: 1.8em;
+            font-weight: bold;
+        }
+
+        .distance-info {
+            text-align: center;
+            padding: 15px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #1abc9c, #16a085);
+            color: white;
+        }
+
+        .distance-info h4 {
+            font-size: 0.9em;
+            margin-bottom: 5px;
+            opacity: 0.9;
+        }
+
+        .distance-info .distance {
+            font-size: 1.8em;
+            font-weight: bold;
+        }
+
+        .next-stops {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 15px;
+        }
+
+        .next-stops h4 {
+            color: #2c3e50;
+            margin-bottom: 12px;
+            font-size: 1.1em;
+        }
+
+        .stop-list {
+            list-style: none;
+        }
+
+        .stop-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .stop-item:last-child {
+            border-bottom: none;
+        }
+
+        .stop-number {
+            background: #3498db;
+            color: white;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+
+        .stop-name {
+            flex-grow: 1;
+            color: #2c3e50;
+            font-weight: 500;
+        }
+
+        .stop-eta {
+            color: #7f8c8d;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .alert-banner {
+            background: linear-gradient(135deg, #e74c3c, #c0392b);
+            color: white;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            text-align: center;
+            font-weight: 600;
+            display: none;
+        }
+
+        .live-indicator {
+            display: inline-flex;
+            align-items: center;
+            background: #e8f5e8;
+            color: #27ae60;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+            margin-left: 15px;
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: #27ae60;
+            border-radius: 50%;
+            margin-right: 6px;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        .refresh-indicator {
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .search-controls {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .bus-routes {
+                grid-template-columns: 1fr;
+            }
+            
+            .arrival-info {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2.2em;
+            }
+            
+            .current-time {
+                font-size: 1.4em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚌 Live Bus Tracker</h1>
+            <p>Real-time arrival times and current station status</p>
+            <div class="live-indicator">
+                <div class="live-dot"></div>
+                LIVE
+            </div>
+        </div>
+
+        <div class="current-time" id="currentTime">
+            Loading current time...
+        </div>
+
+        <div class="search-section">
+            <div class="search-controls">
+                <div class="form-group">
+                    <label for="fromStation">From Station</label>
+                    <select id="fromStation">
+                        <option value="">Select your current station</option>
+                        <option value="cantonment">Cantonment Station</option>
+                        <option value="godowlia">Godowlia Chowk</option>
+                        <option value="lanka">Lanka Gate</option>
+                        <option value="bhu">BHU Main Gate</option>
+                        <option value="manduadih">Manduadih Railway Station</option>
+                        <option value="sigra">Sigra Chowk</option>
+                        <option value="mahmoorganj">Mahmoorganj</option>
+                        <option value="lahurabir">Lahurabir</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="toStation">To Station</label>
+                    <select id="toStation">
+                        <option value="">Select destination</option>
+                        <option value="cantonment">Cantonment Station</option>
+                        <option value="godowlia">Godowlia Chowk</option>
+                        <option value="lanka">Lanka Gate</option>
+                        <option value="bhu">BHU Main Gate</option>
+                        <option value="manduadih">Manduadih Railway Station</option>
+                        <option value="sigra">Sigra Chowk</option>
+                        <option value="mahmoorganj">Mahmoorganj</option>
+                        <option value="lahurabir">Lahurabir</option>
+                    </select>
+                </div>
+                <button class="search-btn" onclick="searchBuses()">
+                    🔍 Find Buses
+                </button>
+            </div>
+        </div>
+
+        <div class="alert-banner" id="alertBanner">
+            Service Alert: Some routes may experience delays due to traffic conditions.
+        </div>
+
+        <div class="bus-routes" id="busRoutes">
+            <!-- Bus route cards will be populated here -->
+        </div>
+
+        <div class="refresh-indicator">
+            Last updated: <span id="lastUpdate">Never</span> • Auto-refresh every 30 seconds
+        </div>
+    </div>
+
+    <script>
+        // Sample bus data with stations and real-time status
+        const busData = {
+            'BUS_001': {
+                routeNumber: 'Route 23A',
+                direction: 'Cantonment → BHU',
+                status: 'moving',
+                currentLocation: 'Moving between Godowlia Chowk and Lanka Gate',
+                speed: 25,
+                nextStop: 'Lanka Gate',
+                estimatedArrival: 4,
+                distanceToNext: 1.2,
+                stops: [
+                    { name: 'Lanka Gate', eta: 4 },
+                    { name: 'BHU Main Gate', eta: 8 },
+                    { name: 'BHU Library', eta: 12 },
+                    { name: 'BHU Hospital', eta: 16 }
+                ]
+            },
+            'BUS_002': {
+                routeNumber: 'Route 15B',
+                direction: 'Sigra → Manduadih',
+                status: 'stopped',
+                currentLocation: 'Currently stopped at Mahmoorganj Bus Stand',
+                speed: 0,
+                nextStop: 'Lahurabir Crossing',
+                estimatedArrival: 6,
+                distanceToNext: 2.1,
+                stoppedSince: 3,
+                stops: [
+                    { name: 'Lahurabir Crossing', eta: 6 },
+                    { name: 'Railway Colony', eta: 11 },
+                    { name: 'Manduadih Station', eta: 18 }
+                ]
+            },
+            'BUS_003': {
+                routeNumber: 'Route 7C',
+                direction: 'Godowlia → Cantonment',
+                status: 'delayed',
+                currentLocation: 'Moving slowly near Vishwanath Gali (heavy traffic)',
+                speed: 8,
+                nextStop: 'Dashashwamedh Ghat',
+                estimatedArrival: 12,
+                distanceToNext: 0.8,
+                delay: 8,
+                stops: [
+                    { name: 'Dashashwamedh Ghat', eta: 12 },
+                    { name: 'Raj Ghat', eta: 18 },
+                    { name: 'Cantonment Station', eta: 25 }
+                ]
+            }
+        };
+
+        // Station data
+        const stations = {
+            'cantonment': 'Cantonment Station',
+            'godowlia': 'Godowlia Chowk',
+            'lanka': 'Lanka Gate',
+            'bhu': 'BHU Main Gate',
+            'manduadih': 'Manduadih Railway Station',
+            'sigra': 'Sigra Chowk',
+            'mahmoorganj': 'Mahmoorganj',
+            'lahurabir': 'Lahurabir'
+        };
+
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', function() {
+            updateCurrentTime();
+            setInterval(updateCurrentTime, 1000);
+            
+            loadAllBuses();
+            setInterval(updateBusData, 30000); // Update every 30 seconds
+            
+            // Show sample alert
+            setTimeout(() => {
+                document.getElementById('alertBanner').style.display = 'block';
+            }, 2000);
+        });
+
+        function updateCurrentTime() {
+            const now = new Date();
+            const timeString = now.toLocaleString('en-IN', {
+                timeZone: 'Asia/Kolkata',
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            document.getElementById('currentTime').textContent = timeString;
+        }
+
+        function loadAllBuses() {
+            const busRoutes = document.getElementById('busRoutes');
+            busRoutes.innerHTML = '';
+
+            Object.keys(busData).forEach(busId => {
+                const bus = busData[busId];
+                busRoutes.appendChild(createBusCard(busId, bus));
+            });
+
+            updateLastRefresh();
+        }
+
+        function createBusCard(busId, bus) {
+            const card = document.createElement('div');
+            card.className = 'route-card';
+            
+            const statusClass = `status-${bus.status}`;
+            const statusIcon = bus.status === 'moving' ? '🚌' : bus.status === 'stopped' ? '🚏' : '⚠️';
+            const statusText = bus.status === 'moving' ? 'Moving' : 
+                             bus.status === 'stopped' ? `Stopped (${bus.stoppedSince} min)` : 
+                             `Delayed (${bus.delay} min)`;
+
+            card.innerHTML = `
+                <div class="route-header">
+                    <div class="route-number">${bus.routeNumber}</div>
+                    <div class="route-direction">${bus.direction}</div>
+                </div>
+
+                <div class="bus-info">
+                    <div class="bus-status ${statusClass}">
+                        <span class="status-icon">${statusIcon}</span>
+                        ${statusText}
+                    </div>
+
+                    <div class="current-location">
+                        <h4>📍 Current Location</h4>
+                        <p>${bus.currentLocation}</p>
+                        ${bus.speed > 0 ? `<p><strong>Speed:</strong> ${bus.speed} km/h</p>` : ''}
+                    </div>
+
+                    <div class="arrival-info">
+                        <div class="arrival-time">
+                            <h4>Next Stop Arrival</h4>
+                            <div class="time">${bus.estimatedArrival} min</div>
+                        </div>
+                        <div class="distance-info">
+                            <h4>Distance</h4>
+                            <div class="distance">${bus.distanceToNext} km</div>
+                        </div>
+                    </div>
+
+                    <div class="next-stops">
+                        <h4>🎯 Upcoming Stops</h4>
+                        <ul class="stop-list">
+                            ${bus.stops.map((stop, index) => `
+                                <li class="stop-item">
+                                    <div class="stop-number">${index + 1}</div>
+                                    <div class="stop-name">${stop.name}</div>
+                                    <div class="stop-eta">${stop.eta} min</div>
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        function searchBuses() {
+            const fromStation = document.getElementById('fromStation').value;
+            const toStation = document.getElementById('toStation').value;
+
+            if (!fromStation || !toStation) {
+                alert('Please select both from and to stations');
+                return;
+            }
+
+            if (fromStation === toStation) {
+                alert('Please select different stations');
+                return;
+            }
+
+            // Filter buses based on route (simplified logic)
+            const busRoutes = document.getElementById('busRoutes');
+            busRoutes.innerHTML = '';
+
+            // Show filtered results
+            Object.keys(busData).forEach(busId => {
+                const bus = busData[busId];
+                // Simple route matching logic
+                if (bus.direction.toLowerCase().includes(stations[fromStation].toLowerCase()) ||
+                    bus.direction.toLowerCase().includes(stations[toStation].toLowerCase())) {
+                    busRoutes.appendChild(createBusCard(busId, bus));
+                }
+            });
+
+            updateLastRefresh();
+        }
+
+        function updateBusData() {
+            // Simulate real-time updates
+            Object.keys(busData).forEach(busId => {
+                const bus = busData[busId];
+                
+                // Update arrival times (decrease by 1-2 minutes)
+                if (bus.estimatedArrival > 0) {
+                    bus.estimatedArrival = Math.max(0, bus.estimatedArrival - Math.floor(Math.random() * 2 + 1));
+                    bus.distanceToNext = Math.max(0, bus.distanceToNext - 0.2);
+                }
+
+                // Update stop ETAs
+                bus.stops.forEach(stop => {
+                    stop.eta = Math.max(0, stop.eta - Math.floor(Math.random() * 2 + 1));
+                });
+
+                // Randomly change status
+                if (Math.random() < 0.1) { // 10% chance
+                    const statuses = ['moving', 'stopped', 'delayed'];
+                    bus.status = statuses[Math.floor(Math.random() * statuses.length)];
+                }
+
+                // Update speed for moving buses
+                if (bus.status === 'moving') {
+                    bus.speed = Math.floor(Math.random() * 30 + 15);
+                } else {
+                    bus.speed = 0;
+                }
+            });
+
+            loadAllBuses();
+        }
+
+        function updateLastRefresh() {
+            const now = new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' });
+            document.getElementById('lastUpdate').textContent = now;
+        }
+    </script>
+</body>
+</html>
